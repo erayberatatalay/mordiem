@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="d4eeb38b-a84f-4546-9195-7ff8bdeee26f" name="Mordiem" url="http://ftp.mordiem.site">
+        <fileTransfer rootFolder="/public_html" host="ftp.mordiem.site" port="21">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>
