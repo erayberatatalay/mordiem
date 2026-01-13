@@ -7,10 +7,22 @@ interface SpotifyControlProps {
   onConnectChange: (connected: boolean) => void;
 }
 
+interface Track {
+  id: string;
+  name: string;
+  artists: { name: string }[];
+  album: { name: string; images: { url: string }[] };
+  uri: string;
+}
+
 export default function SpotifyControl({ connected, onConnectChange }: SpotifyControlProps) {
   const [currentTrack, setCurrentTrack] = useState<any>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<Track[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
 
   useEffect(() => {
     if (connected) {
@@ -25,8 +37,8 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
       const res = await fetch('/api/spotify/current');
       if (res.ok) {
         const data = await res.json();
-        setCurrentTrack(data);
-        setIsPlaying(data?.is_playing || false);
+        setCurrentTrack(data.item);
+        setIsPlaying(data.is_playing || false);
       }
     } catch (error) {
       console.error('Error fetching current track:', error);
@@ -47,7 +59,7 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
       });
       if (res.ok) {
         setIsPlaying(!isPlaying);
-        await fetchCurrentTrack();
+        setTimeout(() => fetchCurrentTrack(), 500);
       }
     } catch (error) {
       console.error('Error toggling play/pause:', error);
@@ -61,7 +73,7 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
     try {
       const res = await fetch('/api/spotify/next', { method: 'POST' });
       if (res.ok) {
-        await fetchCurrentTrack();
+        setTimeout(() => fetchCurrentTrack(), 500);
       }
     } catch (error) {
       console.error('Error skipping to next:', error);
@@ -75,10 +87,50 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
     try {
       const res = await fetch('/api/spotify/previous', { method: 'POST' });
       if (res.ok) {
-        await fetchCurrentTrack();
+        setTimeout(() => fetchCurrentTrack(), 500);
       }
     } catch (error) {
       console.error('Error skipping to previous:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!searchQuery.trim()) return;
+
+    setSearching(true);
+    try {
+      const res = await fetch(`/api/spotify/search?q=${encodeURIComponent(searchQuery)}&limit=10`);
+      if (res.ok) {
+        const data = await res.json();
+        setSearchResults(data);
+        setShowSearch(true);
+      }
+    } catch (error) {
+      console.error('Error searching tracks:', error);
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const handlePlayTrack = async (trackUri: string) => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/spotify/play-track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trackUri }),
+      });
+      if (res.ok) {
+        setShowSearch(false);
+        setSearchQuery('');
+        setSearchResults([]);
+        setTimeout(() => fetchCurrentTrack(), 500);
+      }
+    } catch (error) {
+      console.error('Error playing track:', error);
     } finally {
       setLoading(false);
     }
@@ -125,6 +177,61 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
         </div>
       ) : (
         <div>
+          {/* Arama Kutusu */}
+          <div className="mb-6">
+            <form onSubmit={handleSearch} className="flex gap-2">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Şarkı ara..."
+                className="flex-1 px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+              <button
+                type="submit"
+                disabled={searching}
+                className="px-6 py-3 bg-green-500 hover:bg-green-600 text-white font-semibold rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {searching ? 'Aranıyor...' : 'Ara'}
+              </button>
+            </form>
+
+            {/* Arama Sonuçları */}
+            {showSearch && searchResults.length > 0 && (
+              <div className="mt-4 max-h-64 overflow-y-auto space-y-2">
+                {searchResults.map((track) => (
+                  <div
+                    key={track.id}
+                    onClick={() => handlePlayTrack(track.uri)}
+                    className="flex items-center gap-3 p-3 bg-white/5 hover:bg-white/10 rounded-lg cursor-pointer transition-all duration-200"
+                  >
+                    {track.album?.images?.[2]?.url && (
+                      <img
+                        src={track.album.images[2].url}
+                        alt={track.album.name}
+                        className="w-12 h-12 rounded object-cover"
+                      />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white font-semibold truncate">{track.name}</p>
+                      <p className="text-gray-400 text-sm truncate">
+                        {track.artists.map((a) => a.name).join(', ')}
+                      </p>
+                    </div>
+                    <svg
+                      className="w-5 h-5 text-green-500"
+                      fill="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path d="M8 5v14l11-7z" />
+                    </svg>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Çalan Şarkı */}
           {currentTrack && (
             <div className="mb-6">
               <div className="flex items-center gap-4 mb-4">
@@ -150,11 +257,13 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
             </div>
           )}
 
+          {/* Kontrol Butonları */}
           <div className="flex items-center justify-center gap-4">
             <button
               onClick={handlePrevious}
               disabled={loading}
               className="p-3 bg-white/10 hover:bg-white/20 rounded-full transition-all duration-200 disabled:opacity-50"
+              title="Önceki şarkı"
             >
               <svg
                 className="w-6 h-6 text-white"
@@ -168,6 +277,7 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
               onClick={handlePlayPause}
               disabled={loading}
               className="p-4 bg-green-500 hover:bg-green-600 rounded-full transition-all duration-200 disabled:opacity-50"
+              title={isPlaying ? 'Duraklat' : 'Oynat'}
             >
               {isPlaying ? (
                 <svg
@@ -191,6 +301,7 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
               onClick={handleNext}
               disabled={loading}
               className="p-3 bg-white/10 hover:bg-white/20 rounded-full transition-all duration-200 disabled:opacity-50"
+              title="Sonraki şarkı"
             >
               <svg
                 className="w-6 h-6 text-white"
