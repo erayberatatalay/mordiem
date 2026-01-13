@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { spotifyApiRequest } from '@/lib/spotify';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST() {
   try {
     const response = await spotifyApiRequest('/me/player/previous', {

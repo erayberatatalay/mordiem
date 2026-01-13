@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { spotifyApiRequest } from '@/lib/spotify';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
