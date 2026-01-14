@@ -29,6 +29,8 @@ export async function GET() {
     return new NextResponse(JSON.stringify({
       item: data.item,
       is_playing: data.is_playing || false,
+      progress_ms: data.progress_ms || 0,
+      duration_ms: data.item?.duration_ms || 0,
     }), {
       status: 200,
       headers: {

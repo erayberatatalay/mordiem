@@ -36,12 +36,15 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
   const [error, setError] = useState<string | null>(null);
   const [searchTab, setSearchTab] = useState<'tracks' | 'playlists'>('tracks');
   const [shuffleState, setShuffleState] = useState(false);
+  const [previousTrackId, setPreviousTrackId] = useState<string | null>(null);
+  const [autoNextEnabled, setAutoNextEnabled] = useState(true);
 
   useEffect(() => {
     if (connected) {
       fetchCurrentTrack();
       fetchShuffleState();
-      const interval = setInterval(fetchCurrentTrack, 3000);
+      // Daha sık kontrol et (autoplay için)
+      const interval = setInterval(fetchCurrentTrack, 2000);
       return () => clearInterval(interval);
     }
   }, [connected]);
@@ -90,12 +93,50 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
       if (res.ok) {
         const data = await res.json();
         if (data && data.item) {
+          const currentTrackId = data.item.id;
+          const wasPlaying = isPlaying;
+          const nowPlaying = data.is_playing || false;
+          const progress = data.progress_ms || 0;
+          const duration = data.duration_ms || 0;
+          
+          // Şarkı bitti mi kontrol et (son 2 saniye içindeyse ve durduysa)
+          if (wasPlaying && !nowPlaying && previousTrackId === currentTrackId) {
+            // Şarkı durdu, otomatik next
+            if (autoNextEnabled && duration > 0 && progress >= duration - 2000) {
+              setTimeout(async () => {
+                try {
+                  await fetch('/api/spotify/next', { method: 'POST' });
+                  setTimeout(() => fetchCurrentTrack(), 1000);
+                } catch (err) {
+                  console.error('Auto next error:', err);
+                }
+              }, 500);
+            }
+          }
+          
+          // Şarkı değişti mi kontrol et
+          if (previousTrackId && previousTrackId !== currentTrackId && wasPlaying && !nowPlaying) {
+            // Önceki şarkı bitti ve yeni şarkı başlamadı, otomatik next
+            if (autoNextEnabled) {
+              setTimeout(async () => {
+                try {
+                  await fetch('/api/spotify/next', { method: 'POST' });
+                  setTimeout(() => fetchCurrentTrack(), 1000);
+                } catch (err) {
+                  console.error('Auto next error:', err);
+                }
+              }, 500);
+            }
+          }
+          
           setCurrentTrack(data.item);
-          setIsPlaying(data.is_playing || false);
+          setIsPlaying(nowPlaying);
+          setPreviousTrackId(currentTrackId);
           setError(null);
         } else if (data === null) {
           setCurrentTrack(null);
           setIsPlaying(false);
+          setPreviousTrackId(null);
         }
       }
     } catch (err) {
