@@ -35,14 +35,49 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
   const [showSearch, setShowSearch] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchTab, setSearchTab] = useState<'tracks' | 'playlists'>('tracks');
+  const [shuffleState, setShuffleState] = useState(false);
 
   useEffect(() => {
     if (connected) {
       fetchCurrentTrack();
+      fetchShuffleState();
       const interval = setInterval(fetchCurrentTrack, 3000);
       return () => clearInterval(interval);
     }
   }, [connected]);
+
+  const fetchShuffleState = async () => {
+    try {
+      const res = await fetch('/api/spotify/shuffle');
+      if (res.ok) {
+        const data = await res.json();
+        setShuffleState(data.shuffle_state || false);
+      }
+    } catch (err) {
+      console.error('Error fetching shuffle state:', err);
+    }
+  };
+
+  const handleToggleShuffle = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/spotify/shuffle', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: !shuffleState }),
+      });
+      if (res.ok) {
+        setShuffleState(!shuffleState);
+      } else if (res.status === 404) {
+        setError('Spotify uygulamasını açın');
+      }
+    } catch (err) {
+      console.error('Error toggling shuffle:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const fetchCurrentTrack = async () => {
     try {
@@ -420,7 +455,21 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
           )}
 
           {/* Kontrol Butonları */}
-          <div className="flex items-center justify-center gap-3 sm:gap-4">
+          <div className="flex items-center justify-center gap-2 sm:gap-3">
+            <button
+              onClick={handleToggleShuffle}
+              disabled={loading}
+              className={`p-2 sm:p-3 rounded-full transition-all duration-200 disabled:opacity-50 active:scale-95 ${
+                shuffleState 
+                  ? 'bg-green-500 hover:bg-green-600 text-white' 
+                  : 'bg-white/10 hover:bg-white/20 text-white'
+              }`}
+              title={shuffleState ? 'Shuffle kapat' : 'Shuffle aç'}
+            >
+              <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/>
+              </svg>
+            </button>
             <button
               onClick={handlePrevious}
               disabled={loading}
