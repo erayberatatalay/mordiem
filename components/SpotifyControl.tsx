@@ -24,6 +24,25 @@ interface Playlist {
   tracks: { total: number };
 }
 
+interface Episode {
+  id: string;
+  name: string;
+  uri: string;
+  images: { url: string }[];
+  show: { name: string };
+  duration_ms: number;
+  description: string;
+}
+
+interface Show {
+  id: string;
+  name: string;
+  uri: string;
+  images: { url: string }[];
+  publisher: string;
+  total_episodes: number;
+}
+
 export default function SpotifyControl({ connected, onConnectChange }: SpotifyControlProps) {
   const [currentTrack, setCurrentTrack] = useState<any>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -31,10 +50,12 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Track[]>([]);
   const [playlistResults, setPlaylistResults] = useState<Playlist[]>([]);
+  const [episodeResults, setEpisodeResults] = useState<Episode[]>([]);
+  const [showResults, setShowResults] = useState<Show[]>([]);
   const [searching, setSearching] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [searchTab, setSearchTab] = useState<'tracks' | 'playlists'>('tracks');
+  const [searchTab, setSearchTab] = useState<'tracks' | 'playlists' | 'episodes' | 'shows'>('tracks');
   const [shuffleState, setShuffleState] = useState(false);
   const [previousTrackId, setPreviousTrackId] = useState<string | null>(null);
   const [autoNextEnabled, setAutoNextEnabled] = useState(true);
@@ -43,11 +64,11 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
     if (connected) {
       fetchCurrentTrack();
       fetchShuffleState();
-      // Daha sık kontrol et (autoplay için)
-      const interval = setInterval(fetchCurrentTrack, 2000);
+      // Daha sık kontrol et (autoplay için) - her 1.5 saniyede bir
+      const interval = setInterval(fetchCurrentTrack, 1500);
       return () => clearInterval(interval);
     }
-  }, [connected]);
+  }, [connected, isPlaying]);
 
   const fetchShuffleState = async () => {
     try {
@@ -99,29 +120,33 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
           const progress = data.progress_ms || 0;
           const duration = data.duration_ms || 0;
           
-          // Şarkı bitti mi kontrol et (son 2 saniye içindeyse ve durduysa)
+          // Şarkı bitti mi kontrol et (son 500ms içindeyse ve durduysa veya progress duration'a ulaştıysa)
           if (wasPlaying && !nowPlaying && previousTrackId === currentTrackId) {
             // Şarkı durdu, otomatik next
-            if (autoNextEnabled && duration > 0 && progress >= duration - 2000) {
+            if (autoNextEnabled && duration > 0 && (progress >= duration - 500 || progress >= duration)) {
               setTimeout(async () => {
                 try {
-                  await fetch('/api/spotify/next', { method: 'POST' });
-                  setTimeout(() => fetchCurrentTrack(), 1000);
+                  const nextRes = await fetch('/api/spotify/next', { method: 'POST' });
+                  if (nextRes.ok) {
+                    setTimeout(() => fetchCurrentTrack(), 1000);
+                  }
                 } catch (err) {
                   console.error('Auto next error:', err);
                 }
-              }, 500);
+              }, 800);
             }
           }
           
-          // Şarkı değişti mi kontrol et
-          if (previousTrackId && previousTrackId !== currentTrackId && wasPlaying && !nowPlaying) {
-            // Önceki şarkı bitti ve yeni şarkı başlamadı, otomatik next
+          // Şarkı çalarken bitiyor mu kontrol et (progress duration'a yaklaşıyorsa)
+          if (nowPlaying && duration > 0 && progress > 0 && progress >= duration - 500) {
+            // Şarkı bitiyor, otomatik next
             if (autoNextEnabled) {
               setTimeout(async () => {
                 try {
-                  await fetch('/api/spotify/next', { method: 'POST' });
-                  setTimeout(() => fetchCurrentTrack(), 1000);
+                  const nextRes = await fetch('/api/spotify/next', { method: 'POST' });
+                  if (nextRes.ok) {
+                    setTimeout(() => fetchCurrentTrack(), 1000);
+                  }
                 } catch (err) {
                   console.error('Auto next error:', err);
                 }
@@ -222,6 +247,8 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
         const data = await res.json();
         setSearchResults(data.tracks || []);
         setPlaylistResults(data.playlists || []);
+        setEpisodeResults(data.episodes || []);
+        setShowResults(data.shows || []);
         setShowSearch(true);
       }
     } catch (err) {
@@ -286,6 +313,8 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
         setSearchQuery('');
         setSearchResults([]);
         setPlaylistResults([]);
+        setEpisodeResults([]);
+        setShowResults([]);
         setIsPlaying(true);
         setTimeout(() => fetchCurrentTrack(), 500);
       } else if (res.status === 404) {
@@ -295,6 +324,82 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
       }
     } catch (err) {
       console.error('Error playing playlist:', err);
+      setError('Bağlantı hatası');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePlayEpisode = async (episode: Episode) => {
+    if (!episode || !episode.uri) {
+      setError('Geçersiz episode');
+      return;
+    }
+    
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/spotify/play-track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          episodeUri: episode.uri,
+        }),
+      });
+      if (res.ok) {
+        setShowSearch(false);
+        setSearchQuery('');
+        setSearchResults([]);
+        setPlaylistResults([]);
+        setEpisodeResults([]);
+        setShowResults([]);
+        setIsPlaying(true);
+        setTimeout(() => fetchCurrentTrack(), 500);
+      } else if (res.status === 404) {
+        setError('Spotify uygulamasını açın ve bir cihaz seçin');
+      } else {
+        setError('Episode çalınamadı');
+      }
+    } catch (err) {
+      console.error('Error playing episode:', err);
+      setError('Bağlantı hatası');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePlayShow = async (show: Show) => {
+    if (!show || !show.uri) {
+      setError('Geçersiz show');
+      return;
+    }
+    
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/spotify/play-track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          showUri: show.uri,
+        }),
+      });
+      if (res.ok) {
+        setShowSearch(false);
+        setSearchQuery('');
+        setSearchResults([]);
+        setPlaylistResults([]);
+        setEpisodeResults([]);
+        setShowResults([]);
+        setIsPlaying(true);
+        setTimeout(() => fetchCurrentTrack(), 500);
+      } else if (res.status === 404) {
+        setError('Spotify uygulamasını açın ve bir cihaz seçin');
+      } else {
+        setError('Show çalınamadı');
+      }
+    } catch (err) {
+      console.error('Error playing show:', err);
       setError('Bağlantı hatası');
     } finally {
       setLoading(false);
@@ -356,7 +461,7 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Şarkı veya playlist ara..."
+                placeholder="Şarkı, playlist veya podcast ara..."
                 className="flex-1 px-3 sm:px-4 py-2 sm:py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm sm:text-base"
               />
               <button
@@ -369,30 +474,58 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
             </form>
 
             {/* Arama Sonuçları */}
-            {showSearch && (searchResults.length > 0 || playlistResults.length > 0) && (
+            {showSearch && (searchResults.length > 0 || playlistResults.length > 0 || episodeResults.length > 0 || showResults.length > 0) && (
               <div className="mt-3 sm:mt-4">
                 {/* Tab Seçici */}
-                <div className="flex gap-2 mb-3">
-                  <button
-                    onClick={() => setSearchTab('tracks')}
-                    className={`px-3 py-1 rounded-full text-xs sm:text-sm font-medium transition-all ${
-                      searchTab === 'tracks' 
-                        ? 'bg-green-500 text-white' 
-                        : 'bg-white/10 text-gray-300 hover:bg-white/20'
-                    }`}
-                  >
-                    Şarkılar ({searchResults.length})
-                  </button>
-                  <button
-                    onClick={() => setSearchTab('playlists')}
-                    className={`px-3 py-1 rounded-full text-xs sm:text-sm font-medium transition-all ${
-                      searchTab === 'playlists' 
-                        ? 'bg-green-500 text-white' 
-                        : 'bg-white/10 text-gray-300 hover:bg-white/20'
-                    }`}
-                  >
-                    Playlistler ({playlistResults.length})
-                  </button>
+                <div className="flex gap-2 mb-3 flex-wrap">
+                  {searchResults.length > 0 && (
+                    <button
+                      onClick={() => setSearchTab('tracks')}
+                      className={`px-3 py-1 rounded-full text-xs sm:text-sm font-medium transition-all ${
+                        searchTab === 'tracks' 
+                          ? 'bg-green-500 text-white' 
+                          : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                      }`}
+                    >
+                      Şarkılar ({searchResults.length})
+                    </button>
+                  )}
+                  {playlistResults.length > 0 && (
+                    <button
+                      onClick={() => setSearchTab('playlists')}
+                      className={`px-3 py-1 rounded-full text-xs sm:text-sm font-medium transition-all ${
+                        searchTab === 'playlists' 
+                          ? 'bg-green-500 text-white' 
+                          : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                      }`}
+                    >
+                      Playlistler ({playlistResults.length})
+                    </button>
+                  )}
+                  {episodeResults.length > 0 && (
+                    <button
+                      onClick={() => setSearchTab('episodes')}
+                      className={`px-3 py-1 rounded-full text-xs sm:text-sm font-medium transition-all ${
+                        searchTab === 'episodes' 
+                          ? 'bg-green-500 text-white' 
+                          : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                      }`}
+                    >
+                      Bölümler ({episodeResults.length})
+                    </button>
+                  )}
+                  {showResults.length > 0 && (
+                    <button
+                      onClick={() => setSearchTab('shows')}
+                      className={`px-3 py-1 rounded-full text-xs sm:text-sm font-medium transition-all ${
+                        searchTab === 'shows' 
+                          ? 'bg-green-500 text-white' 
+                          : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                      }`}
+                    >
+                      Podcastler ({showResults.length})
+                    </button>
+                  )}
                 </div>
 
                 {/* Şarkı Sonuçları */}
@@ -451,6 +584,78 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
                           <p className="text-white font-semibold truncate text-sm sm:text-base">{playlist.name || 'Playlist'}</p>
                           <p className="text-gray-400 text-xs sm:text-sm truncate">
                             {playlist.owner?.display_name || 'Spotify'} • {playlist.tracks?.total || 0} şarkı
+                          </p>
+                        </div>
+                        <svg className="w-4 h-4 sm:w-5 sm:h-5 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Episode Sonuçları */}
+                {searchTab === 'episodes' && episodeResults.length > 0 && (
+                  <div className="max-h-48 sm:max-h-64 overflow-y-auto space-y-2">
+                    {episodeResults.filter(e => e && e.id).map((episode) => (
+                      <div
+                        key={episode.id}
+                        onClick={() => handlePlayEpisode(episode)}
+                        className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 bg-white/5 hover:bg-white/10 rounded-lg cursor-pointer transition-all duration-200"
+                      >
+                        {episode.images && episode.images.length > 0 && episode.images[0]?.url ? (
+                          <img
+                            src={episode.images[0].url}
+                            alt={episode.name || 'Episode'}
+                            className="w-10 h-10 sm:w-12 sm:h-12 rounded object-cover"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded bg-white/10 flex items-center justify-center">
+                            <svg className="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/>
+                            </svg>
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white font-semibold truncate text-sm sm:text-base">{episode.name || 'Episode'}</p>
+                          <p className="text-gray-400 text-xs sm:text-sm truncate">
+                            {episode.show?.name || 'Podcast'} • {Math.floor((episode.duration_ms || 0) / 60000)} dk
+                          </p>
+                        </div>
+                        <svg className="w-4 h-4 sm:w-5 sm:h-5 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Show Sonuçları */}
+                {searchTab === 'shows' && showResults.length > 0 && (
+                  <div className="max-h-48 sm:max-h-64 overflow-y-auto space-y-2">
+                    {showResults.filter(s => s && s.id).map((show) => (
+                      <div
+                        key={show.id}
+                        onClick={() => handlePlayShow(show)}
+                        className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 bg-white/5 hover:bg-white/10 rounded-lg cursor-pointer transition-all duration-200"
+                      >
+                        {show.images && show.images.length > 0 && show.images[0]?.url ? (
+                          <img
+                            src={show.images[0].url}
+                            alt={show.name || 'Show'}
+                            className="w-10 h-10 sm:w-12 sm:h-12 rounded object-cover"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded bg-white/10 flex items-center justify-center">
+                            <svg className="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/>
+                            </svg>
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white font-semibold truncate text-sm sm:text-base">{show.name || 'Show'}</p>
+                          <p className="text-gray-400 text-xs sm:text-sm truncate">
+                            {show.publisher || 'Podcast'} • {show.total_episodes || 0} bölüm
                           </p>
                         </div>
                         <svg className="w-4 h-4 sm:w-5 sm:h-5 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">

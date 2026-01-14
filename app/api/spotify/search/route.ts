@@ -7,7 +7,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const query = searchParams.get('q');
-    const type = searchParams.get('type') || 'track,playlist';
+    const type = searchParams.get('type') || 'track,playlist,episode,show';
     const limit = searchParams.get('limit') || '10';
 
     if (!query) {
@@ -27,6 +27,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       tracks: data.tracks?.items || [],
       playlists: data.playlists?.items || [],
+      episodes: data.episodes?.items || [],
+      shows: data.shows?.items || [],
     });
   } catch (error) {
     console.error('Error searching:', error);
