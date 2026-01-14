@@ -15,21 +15,32 @@ export default function Home() {
   }, []);
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900">
-      <div className="container mx-auto px-4 py-16">
-        <div className="text-center mb-12">
-          <h1 className="text-5xl font-bold text-white mb-4">
-            Mordiem
+    <main className="min-h-screen bg-[#2a0a0a] relative overflow-hidden">
+      {/* Arka plan deseni */}
+      <div className="absolute inset-0 opacity-30">
+        <div className="absolute inset-0" style={{
+          backgroundImage: `
+            linear-gradient(to right, rgba(255,255,255,0.03) 1px, transparent 1px),
+            linear-gradient(to bottom, rgba(255,255,255,0.03) 1px, transparent 1px)
+          `,
+          backgroundSize: '60px 60px'
+        }} />
+      </div>
+      
+      {/* Gradient overlay */}
+      <div className="absolute inset-0 bg-gradient-to-b from-[#3a0f0f] via-[#2a0a0a] to-[#1a0505]" />
+      
+      <div className="relative z-10 container mx-auto px-4 py-8 sm:py-16">
+        <div className="text-center mb-8 sm:mb-12">
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-2 tracking-wide">
+            MORDIEM
           </h1>
-          <p className="text-xl text-gray-300">
-            Spotify kontrol merkezi
-          </p>
-          <p className="text-gray-400 mt-2">
-            Arkadaşlarınızla şarkılarınızı paylaşın
+          <p className="text-lg sm:text-xl text-gray-300 tracking-widest font-light">
+            AJANS RADYOSU
           </p>
         </div>
 
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-lg mx-auto">
           <SpotifyControl 
             connected={spotifyConnected}
             onConnectChange={setSpotifyConnected}
