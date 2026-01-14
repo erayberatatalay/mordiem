@@ -10,7 +10,7 @@ interface SpotifyControlProps {
 interface Track {
   id: string;
   name: string;
-  artists: { name: string }[];
+  artists: { id: string; name: string }[];
   album: { name: string; uri: string; images: { url: string }[] };
   uri: string;
 }
@@ -159,12 +159,14 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/spotify/play-track', {
+      // Şarkıyı çal ve benzer şarkıları queue'ya ekle
+      const res = await fetch('/api/spotify/play-with-queue', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           trackUri: track.uri,
-          // Context yok - Spotify'ın autoplay özelliği benzer şarkılarla devam edecek
+          trackId: track.id,
+          artistId: track.artists?.[0]?.id || '',
         }),
       });
       if (res.ok) {
@@ -176,9 +178,12 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
         setTimeout(() => fetchCurrentTrack(), 500);
       } else if (res.status === 404) {
         setError('Spotify uygulamasını açın ve bir cihaz seçin');
+      } else {
+        setError('Şarkı çalınamadı');
       }
     } catch (err) {
       console.error('Error playing track:', err);
+      setError('Bağlantı hatası');
     } finally {
       setLoading(false);
     }
