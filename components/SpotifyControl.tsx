@@ -11,8 +11,17 @@ interface Track {
   id: string;
   name: string;
   artists: { name: string }[];
-  album: { name: string; images: { url: string }[] };
+  album: { name: string; uri: string; images: { url: string }[] };
   uri: string;
+}
+
+interface Playlist {
+  id: string;
+  name: string;
+  uri: string;
+  images: { url: string }[];
+  owner: { display_name: string };
+  tracks: { total: number };
 }
 
 export default function SpotifyControl({ connected, onConnectChange }: SpotifyControlProps) {
@@ -21,9 +30,11 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Track[]>([]);
+  const [playlistResults, setPlaylistResults] = useState<Playlist[]>([]);
   const [searching, setSearching] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [searchTab, setSearchTab] = useState<'tracks' | 'playlists'>('tracks');
 
   useEffect(() => {
     if (connected) {
@@ -35,7 +46,12 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
 
   const fetchCurrentTrack = async () => {
     try {
-      const res = await fetch('/api/spotify/current');
+      const res = await fetch(`/api/spotify/current?t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache',
+        },
+      });
       if (res.ok) {
         const data = await res.json();
         if (data && data.item) {
@@ -43,7 +59,6 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
           setIsPlaying(data.is_playing || false);
           setError(null);
         } else if (data === null) {
-          // Hiçbir şey çalmıyor
           setCurrentTrack(null);
           setIsPlaying(false);
         }
@@ -71,7 +86,6 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
         setIsPlaying(!isPlaying);
         setTimeout(() => fetchCurrentTrack(), 500);
       } else {
-        const data = await res.json();
         if (res.status === 404) {
           setError('Spotify uygulamasını açın ve bir şarkı çalın');
         } else {
@@ -130,29 +144,34 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
       const res = await fetch(`/api/spotify/search?q=${encodeURIComponent(searchQuery)}&limit=10`);
       if (res.ok) {
         const data = await res.json();
-        setSearchResults(data);
+        setSearchResults(data.tracks || []);
+        setPlaylistResults(data.playlists || []);
         setShowSearch(true);
       }
     } catch (err) {
-      console.error('Error searching tracks:', err);
+      console.error('Error searching:', err);
     } finally {
       setSearching(false);
     }
   };
 
-  const handlePlayTrack = async (trackUri: string) => {
+  const handlePlayTrack = async (track: Track) => {
     setLoading(true);
     setError(null);
     try {
       const res = await fetch('/api/spotify/play-track', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ trackUri }),
+        body: JSON.stringify({ 
+          trackUri: track.uri,
+          contextUri: track.album?.uri, // Albüm context'i ile çal
+        }),
       });
       if (res.ok) {
         setShowSearch(false);
         setSearchQuery('');
         setSearchResults([]);
+        setPlaylistResults([]);
         setIsPlaying(true);
         setTimeout(() => fetchCurrentTrack(), 500);
       } else if (res.status === 404) {
@@ -160,6 +179,34 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
       }
     } catch (err) {
       console.error('Error playing track:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePlayPlaylist = async (playlist: Playlist) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/spotify/play-track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          playlistUri: playlist.uri,
+        }),
+      });
+      if (res.ok) {
+        setShowSearch(false);
+        setSearchQuery('');
+        setSearchResults([]);
+        setPlaylistResults([]);
+        setIsPlaying(true);
+        setTimeout(() => fetchCurrentTrack(), 500);
+      } else if (res.status === 404) {
+        setError('Spotify uygulamasını açın ve bir cihaz seçin');
+      }
+    } catch (err) {
+      console.error('Error playing playlist:', err);
     } finally {
       setLoading(false);
     }
@@ -220,7 +267,7 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Şarkı ara..."
+                placeholder="Şarkı veya playlist ara..."
                 className="flex-1 px-3 sm:px-4 py-2 sm:py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm sm:text-base"
               />
               <button
@@ -233,36 +280,97 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
             </form>
 
             {/* Arama Sonuçları */}
-            {showSearch && searchResults.length > 0 && (
-              <div className="mt-3 sm:mt-4 max-h-48 sm:max-h-64 overflow-y-auto space-y-2">
-                {searchResults.map((track) => (
-                  <div
-                    key={track.id}
-                    onClick={() => handlePlayTrack(track.uri)}
-                    className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 bg-white/5 hover:bg-white/10 rounded-lg cursor-pointer transition-all duration-200"
+            {showSearch && (searchResults.length > 0 || playlistResults.length > 0) && (
+              <div className="mt-3 sm:mt-4">
+                {/* Tab Seçici */}
+                <div className="flex gap-2 mb-3">
+                  <button
+                    onClick={() => setSearchTab('tracks')}
+                    className={`px-3 py-1 rounded-full text-xs sm:text-sm font-medium transition-all ${
+                      searchTab === 'tracks' 
+                        ? 'bg-green-500 text-white' 
+                        : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                    }`}
                   >
-                    {track.album?.images?.[2]?.url && (
-                      <img
-                        src={track.album.images[2].url}
-                        alt={track.album.name}
-                        className="w-10 h-10 sm:w-12 sm:h-12 rounded object-cover"
-                      />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-white font-semibold truncate text-sm sm:text-base">{track.name}</p>
-                      <p className="text-gray-400 text-xs sm:text-sm truncate">
-                        {track.artists.map((a) => a.name).join(', ')}
-                      </p>
-                    </div>
-                    <svg
-                      className="w-4 h-4 sm:w-5 sm:h-5 text-green-500 flex-shrink-0"
-                      fill="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path d="M8 5v14l11-7z" />
-                    </svg>
+                    Şarkılar ({searchResults.length})
+                  </button>
+                  <button
+                    onClick={() => setSearchTab('playlists')}
+                    className={`px-3 py-1 rounded-full text-xs sm:text-sm font-medium transition-all ${
+                      searchTab === 'playlists' 
+                        ? 'bg-green-500 text-white' 
+                        : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                    }`}
+                  >
+                    Playlistler ({playlistResults.length})
+                  </button>
+                </div>
+
+                {/* Şarkı Sonuçları */}
+                {searchTab === 'tracks' && searchResults.length > 0 && (
+                  <div className="max-h-48 sm:max-h-64 overflow-y-auto space-y-2">
+                    {searchResults.map((track) => (
+                      <div
+                        key={track.id}
+                        onClick={() => handlePlayTrack(track)}
+                        className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 bg-white/5 hover:bg-white/10 rounded-lg cursor-pointer transition-all duration-200"
+                      >
+                        {track.album?.images?.[2]?.url && (
+                          <img
+                            src={track.album.images[2].url}
+                            alt={track.album.name}
+                            className="w-10 h-10 sm:w-12 sm:h-12 rounded object-cover"
+                          />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white font-semibold truncate text-sm sm:text-base">{track.name}</p>
+                          <p className="text-gray-400 text-xs sm:text-sm truncate">
+                            {track.artists.map((a) => a.name).join(', ')}
+                          </p>
+                        </div>
+                        <svg className="w-4 h-4 sm:w-5 sm:h-5 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
+
+                {/* Playlist Sonuçları */}
+                {searchTab === 'playlists' && playlistResults.length > 0 && (
+                  <div className="max-h-48 sm:max-h-64 overflow-y-auto space-y-2">
+                    {playlistResults.map((playlist) => (
+                      <div
+                        key={playlist.id}
+                        onClick={() => handlePlayPlaylist(playlist)}
+                        className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 bg-white/5 hover:bg-white/10 rounded-lg cursor-pointer transition-all duration-200"
+                      >
+                        {playlist.images?.[0]?.url ? (
+                          <img
+                            src={playlist.images[0].url}
+                            alt={playlist.name}
+                            className="w-10 h-10 sm:w-12 sm:h-12 rounded object-cover"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded bg-white/10 flex items-center justify-center">
+                            <svg className="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z"/>
+                            </svg>
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white font-semibold truncate text-sm sm:text-base">{playlist.name}</p>
+                          <p className="text-gray-400 text-xs sm:text-sm truncate">
+                            {playlist.owner?.display_name} • {playlist.tracks?.total} şarkı
+                          </p>
+                        </div>
+                        <svg className="w-4 h-4 sm:w-5 sm:h-5 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -306,11 +414,7 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
               className="p-2 sm:p-3 bg-white/10 hover:bg-white/20 rounded-full transition-all duration-200 disabled:opacity-50 active:scale-95"
               title="Önceki şarkı"
             >
-              <svg
-                className="w-5 h-5 sm:w-6 sm:h-6 text-white"
-                fill="currentColor"
-                viewBox="0 0 24 24"
-              >
+              <svg className="w-5 h-5 sm:w-6 sm:h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
               </svg>
             </button>
@@ -321,19 +425,11 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
               title={isPlaying ? 'Duraklat' : 'Oynat'}
             >
               {isPlaying ? (
-                <svg
-                  className="w-6 h-6 sm:w-8 sm:h-8 text-white"
-                  fill="currentColor"
-                  viewBox="0 0 24 24"
-                >
+                <svg className="w-6 h-6 sm:w-8 sm:h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
                 </svg>
               ) : (
-                <svg
-                  className="w-6 h-6 sm:w-8 sm:h-8 text-white"
-                  fill="currentColor"
-                  viewBox="0 0 24 24"
-                >
+                <svg className="w-6 h-6 sm:w-8 sm:h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M8 5v14l11-7z" />
                 </svg>
               )}
@@ -344,11 +440,7 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
               className="p-2 sm:p-3 bg-white/10 hover:bg-white/20 rounded-full transition-all duration-200 disabled:opacity-50 active:scale-95"
               title="Sonraki şarkı"
             >
-              <svg
-                className="w-5 h-5 sm:w-6 sm:h-6 text-white"
-                fill="currentColor"
-                viewBox="0 0 24 24"
-              >
+              <svg className="w-5 h-5 sm:w-6 sm:h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
               </svg>
             </button>

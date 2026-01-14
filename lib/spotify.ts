@@ -79,6 +79,7 @@ export async function spotifyApiRequest(endpoint: string, options: RequestInit =
 
   const response = await fetch(`https://api.spotify.com/v1${endpoint}`, {
     ...options,
+    cache: 'no-store',
     headers: {
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
@@ -93,6 +94,7 @@ export async function spotifyApiRequest(endpoint: string, options: RequestInit =
     if (newToken) {
       return fetch(`https://api.spotify.com/v1${endpoint}`, {
         ...options,
+        cache: 'no-store',
         headers: {
           'Authorization': `Bearer ${newToken}`,
           'Content-Type': 'application/json',
