@@ -31,6 +31,7 @@ export async function GET() {
       is_playing: data.is_playing || false,
       progress_ms: data.progress_ms || 0,
       duration_ms: data.item?.duration_ms || 0,
+      artists: data.item?.artists || [],
     }), {
       status: 200,
       headers: {

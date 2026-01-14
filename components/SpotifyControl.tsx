@@ -61,6 +61,8 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
   const [autoNextEnabled, setAutoNextEnabled] = useState(true);
   const [lastProgress, setLastProgress] = useState(0);
   const [autoNextTriggered, setAutoNextTriggered] = useState(false);
+  const [lastQueueAddTrackId, setLastQueueAddTrackId] = useState<string | null>(null);
+  const [queueAddInProgress, setQueueAddInProgress] = useState(false);
 
   useEffect(() => {
     if (connected) {
@@ -126,6 +128,34 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
           if (previousTrackId && previousTrackId !== currentTrackId) {
             setAutoNextTriggered(false);
             setLastProgress(0);
+            setLastQueueAddTrackId(null);
+          }
+          
+          // Şarkı çalarken queue'ya benzer şarkılar ekle (Spotify autoplay gibi)
+          if (nowPlaying && currentTrackId && currentTrackId !== lastQueueAddTrackId && !queueAddInProgress) {
+            // Her yeni şarkıda queue'ya benzer şarkılar ekle
+            setQueueAddInProgress(true);
+            setTimeout(async () => {
+              try {
+                const artistId = data.item.artists?.[0]?.id || data.artists?.[0]?.id || '';
+                const addRes = await fetch('/api/spotify/queue/add-similar', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    trackId: currentTrackId,
+                    artistId: artistId,
+                  }),
+                });
+                if (addRes.ok) {
+                  setLastQueueAddTrackId(currentTrackId);
+                  console.log('Benzer şarkılar queue\'ya eklendi');
+                }
+              } catch (err) {
+                console.error('Error adding similar tracks:', err);
+              } finally {
+                setQueueAddInProgress(false);
+              }
+            }, 2000); // Şarkı başladıktan 2 saniye sonra ekle
           }
           
           // Şarkı çalarken bitiyor mu kontrol et (progress duration'a yaklaşıyorsa)
