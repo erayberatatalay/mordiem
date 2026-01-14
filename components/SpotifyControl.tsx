@@ -164,7 +164,7 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           trackUri: track.uri,
-          contextUri: track.album?.uri, // Albüm context'i ile çal
+          // Context yok - Spotify'ın autoplay özelliği benzer şarkılarla devam edecek
         }),
       });
       if (res.ok) {
