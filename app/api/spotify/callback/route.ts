@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { saveSpotifyTokens } from '@/lib/token-store';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,19 +44,19 @@ export async function GET(request: Request) {
       throw new Error(data.error || 'Token exchange failed');
     }
 
-    // Token'ları environment variable olarak kullanılacak
-    // Bu token'ları kopyalayıp environment variable'a ekleyin:
-    // SPOTIFY_ACCESS_TOKEN=<access_token>
-    // SPOTIFY_REFRESH_TOKEN=<refresh_token>
-    
-    // Şimdilik token'ları console'a yazdırıyoruz (production'da kaldırın)
-    console.log('=== SPOTIFY TOKENS (Environment Variable olarak ekleyin) ===');
-    console.log(`SPOTIFY_ACCESS_TOKEN=${data.access_token}`);
-    if (data.refresh_token) {
-      console.log(`SPOTIFY_REFRESH_TOKEN=${data.refresh_token}`);
-    }
-    console.log('=============================================================');
+    // Token'ları Upstash'e kaydet (herkes kullanabilir)
+    const saved = await saveSpotifyTokens({
+      access_token: data.access_token,
+      refresh_token: data.refresh_token,
+      expires_at: Date.now() + (data.expires_in * 1000),
+    });
 
+    if (!saved) {
+      console.error('Failed to save tokens to Upstash');
+      return NextResponse.redirect(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/?error=token_save_failed`);
+    }
+
+    console.log('Spotify tokens saved successfully!');
     return NextResponse.redirect(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/?connected=spotify`);
   } catch (error) {
     console.error('Spotify callback error:', error);

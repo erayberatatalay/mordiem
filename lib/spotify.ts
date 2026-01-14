@@ -1,16 +1,20 @@
+import { getSpotifyTokens, saveSpotifyTokens } from './token-store';
+
+// Token'ları Upstash'ten oku
 async function getAccessToken(): Promise<string | null> {
-  // Environment variable'dan oku (herkes aynı token'ı kullanacak)
-  return process.env.SPOTIFY_ACCESS_TOKEN || null;
+  const tokens = await getSpotifyTokens();
+  return tokens?.access_token || null;
 }
 
 async function getRefreshToken(): Promise<string | null> {
-  // Environment variable'dan oku (herkes aynı token'ı kullanacak)
-  return process.env.SPOTIFY_REFRESH_TOKEN || null;
+  const tokens = await getSpotifyTokens();
+  return tokens?.refresh_token || null;
 }
 
+// Access token'ı yenile
 async function refreshAccessToken(): Promise<string | null> {
-  const refreshToken = await getRefreshToken();
-  if (!refreshToken) return null;
+  const tokens = await getSpotifyTokens();
+  if (!tokens?.refresh_token) return null;
 
   const clientId = process.env.SPOTIFY_CLIENT_ID;
   const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
@@ -26,15 +30,25 @@ async function refreshAccessToken(): Promise<string | null> {
       },
       body: new URLSearchParams({
         grant_type: 'refresh_token',
-        refresh_token: refreshToken,
+        refresh_token: tokens.refresh_token,
       }),
     });
 
     const data = await response.json();
-    if (!response.ok) return null;
+    if (!response.ok) {
+      console.error('Token refresh failed:', data);
+      return null;
+    }
 
-    // Yeni access token döndür (environment variable otomatik güncellenmez)
-    // Kullanıcı token'ları environment variable'a eklemelidir
+    // Yeni token'ları Upstash'e kaydet
+    const newTokens = {
+      access_token: data.access_token,
+      refresh_token: data.refresh_token || tokens.refresh_token,
+      expires_at: Date.now() + (data.expires_in * 1000),
+    };
+    await saveSpotifyTokens(newTokens);
+
+    console.log('Token refreshed successfully');
     return data.access_token;
   } catch (error) {
     console.error('Error refreshing token:', error);
@@ -43,13 +57,18 @@ async function refreshAccessToken(): Promise<string | null> {
 }
 
 export async function getSpotifyToken(): Promise<string | null> {
-  let token = await getAccessToken();
+  const tokens = await getSpotifyTokens();
   
-  if (!token) {
-    token = await refreshAccessToken();
+  // Token yoksa null döndür
+  if (!tokens) return null;
+  
+  // Token süresi dolmuşsa yenile
+  if (tokens.expires_at && Date.now() > tokens.expires_at - 60000) {
+    console.log('Token expired, refreshing...');
+    return await refreshAccessToken();
   }
-
-  return token;
+  
+  return tokens.access_token;
 }
 
 export async function spotifyApiRequest(endpoint: string, options: RequestInit = {}) {
@@ -68,7 +87,8 @@ export async function spotifyApiRequest(endpoint: string, options: RequestInit =
   });
 
   if (response.status === 401) {
-    // Try refreshing token
+    // Token geçersiz, yenilemeyi dene
+    console.log('Token invalid, trying to refresh...');
     const newToken = await refreshAccessToken();
     if (newToken) {
       return fetch(`https://api.spotify.com/v1${endpoint}`, {
