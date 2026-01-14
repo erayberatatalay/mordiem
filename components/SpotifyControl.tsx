@@ -185,6 +185,11 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
   };
 
   const handlePlayPlaylist = async (playlist: Playlist) => {
+    if (!playlist || !playlist.uri) {
+      setError('Geçersiz playlist');
+      return;
+    }
+    
     setLoading(true);
     setError(null);
     try {
@@ -204,9 +209,12 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
         setTimeout(() => fetchCurrentTrack(), 500);
       } else if (res.status === 404) {
         setError('Spotify uygulamasını açın ve bir cihaz seçin');
+      } else {
+        setError('Playlist çalınamadı');
       }
     } catch (err) {
       console.error('Error playing playlist:', err);
+      setError('Bağlantı hatası');
     } finally {
       setLoading(false);
     }
@@ -339,16 +347,16 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
                 {/* Playlist Sonuçları */}
                 {searchTab === 'playlists' && playlistResults.length > 0 && (
                   <div className="max-h-48 sm:max-h-64 overflow-y-auto space-y-2">
-                    {playlistResults.map((playlist) => (
+                    {playlistResults.filter(p => p && p.id).map((playlist) => (
                       <div
                         key={playlist.id}
                         onClick={() => handlePlayPlaylist(playlist)}
                         className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 bg-white/5 hover:bg-white/10 rounded-lg cursor-pointer transition-all duration-200"
                       >
-                        {playlist.images?.[0]?.url ? (
+                        {playlist.images && playlist.images.length > 0 && playlist.images[0]?.url ? (
                           <img
                             src={playlist.images[0].url}
-                            alt={playlist.name}
+                            alt={playlist.name || 'Playlist'}
                             className="w-10 h-10 sm:w-12 sm:h-12 rounded object-cover"
                           />
                         ) : (
@@ -359,9 +367,9 @@ export default function SpotifyControl({ connected, onConnectChange }: SpotifyCo
                           </div>
                         )}
                         <div className="flex-1 min-w-0">
-                          <p className="text-white font-semibold truncate text-sm sm:text-base">{playlist.name}</p>
+                          <p className="text-white font-semibold truncate text-sm sm:text-base">{playlist.name || 'Playlist'}</p>
                           <p className="text-gray-400 text-xs sm:text-sm truncate">
-                            {playlist.owner?.display_name} • {playlist.tracks?.total} şarkı
+                            {playlist.owner?.display_name || 'Spotify'} • {playlist.tracks?.total || 0} şarkı
                           </p>
                         </div>
                         <svg className="w-4 h-4 sm:w-5 sm:h-5 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
