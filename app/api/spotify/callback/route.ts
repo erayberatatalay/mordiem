@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,23 +43,18 @@ export async function GET(request: Request) {
       throw new Error(data.error || 'Token exchange failed');
     }
 
-    // Store tokens in cookies (in production, use httpOnly cookies and proper session management)
-    const cookieStore = await cookies();
-    cookieStore.set('spotify_access_token', data.access_token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: data.expires_in,
-    });
-
+    // Token'ları environment variable olarak kullanılacak
+    // Bu token'ları kopyalayıp environment variable'a ekleyin:
+    // SPOTIFY_ACCESS_TOKEN=<access_token>
+    // SPOTIFY_REFRESH_TOKEN=<refresh_token>
+    
+    // Şimdilik token'ları console'a yazdırıyoruz (production'da kaldırın)
+    console.log('=== SPOTIFY TOKENS (Environment Variable olarak ekleyin) ===');
+    console.log(`SPOTIFY_ACCESS_TOKEN=${data.access_token}`);
     if (data.refresh_token) {
-      cookieStore.set('spotify_refresh_token', data.refresh_token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 60 * 60 * 24 * 365, // 1 year
-      });
+      console.log(`SPOTIFY_REFRESH_TOKEN=${data.refresh_token}`);
     }
+    console.log('=============================================================');
 
     return NextResponse.redirect(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/?connected=spotify`);
   } catch (error) {

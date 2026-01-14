@@ -1,13 +1,11 @@
-import { cookies } from 'next/headers';
-
 async function getAccessToken(): Promise<string | null> {
-  const cookieStore = await cookies();
-  return cookieStore.get('spotify_access_token')?.value || null;
+  // Environment variable'dan oku (herkes aynı token'ı kullanacak)
+  return process.env.SPOTIFY_ACCESS_TOKEN || null;
 }
 
 async function getRefreshToken(): Promise<string | null> {
-  const cookieStore = await cookies();
-  return cookieStore.get('spotify_refresh_token')?.value || null;
+  // Environment variable'dan oku (herkes aynı token'ı kullanacak)
+  return process.env.SPOTIFY_REFRESH_TOKEN || null;
 }
 
 async function refreshAccessToken(): Promise<string | null> {
@@ -35,15 +33,8 @@ async function refreshAccessToken(): Promise<string | null> {
     const data = await response.json();
     if (!response.ok) return null;
 
-    // Update access token in cookies
-    const cookieStore = await cookies();
-    cookieStore.set('spotify_access_token', data.access_token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: data.expires_in,
-    });
-
+    // Yeni access token döndür (environment variable otomatik güncellenmez)
+    // Kullanıcı token'ları environment variable'a eklemelidir
     return data.access_token;
   } catch (error) {
     console.error('Error refreshing token:', error);
